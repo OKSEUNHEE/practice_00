@@ -26,7 +26,8 @@ const lessons = [
   ]}
 ];
 
-const lessonMap = Object.fromEntries(lessons.flatMap(group => group.items.map(item => [item.id, {...item, group:group.group, icon:group.icon}])));
+const standaloneLessons = { 'stock-personality': { id:'stock-personality', title:'주식성향 테스트', subtitle:'수익 기대와 손실 감내 수준으로 나의 투자 성향 알아보기', group:'투자성향 테스트', icon:'fa-user-check' } };
+const lessonMap = Object.fromEntries([...lessons.flatMap(group => group.items.map(item => [item.id, {...item, group:group.group, icon:group.icon}])), ...Object.entries(standaloneLessons)]);
 const analysisStorageKey = 'edumgt-investment-academy-progress-v1';
 const globalProgressTarget = 100;
 function loadLearningState() { try { return JSON.parse(localStorage.getItem(analysisStorageKey)) ?? { lessons:{}, clicks:[] }; } catch { return { lessons:{}, clicks:[] }; } }
@@ -36,6 +37,7 @@ function saveLearningState() { localStorage.setItem(analysisStorageKey, JSON.str
 function lessonLearningState(id) { return learningState.lessons[id] ??= { fields:{}, actions:{} }; }
 function markLearningProgress(key) { learningState.completed[key] = true; }
 function trackedFieldKey(field) {
+  if (field.dataset.personalityAnswer !== undefined) return `personality:${field.dataset.personalityAnswer}`;
   if (field.dataset.quantField) return `quant:${field.dataset.quantField}`;
   if (field.dataset.finance) return `finance:${field.dataset.finance}`;
   if (field.dataset.technicalNote) return `technical:${field.dataset.technicalNote}`;
@@ -45,15 +47,15 @@ function trackedFieldKey(field) {
   if (field.name === 'practice-stock') return 'practice-stock';
   return null;
 }
-function saveTrackedField(field) { const key=trackedFieldKey(field); if (!key) return; const state=lessonLearningState(activeLesson); state.fields[key] = field.type === 'checkbox' || field.type === 'radio' ? field.checked : field.value; markLearningProgress(`input:${activeLesson}:${key}`); saveLearningState(); updateLearningProgress(); }
-function restoreTrackedFields(id) { const fields=lessonLearningState(id).fields; document.querySelectorAll('[data-finance],[data-technical-note],[data-practice-note],[data-sim-condition],[data-sim-condition-range],[data-quant-field],input[name="practice-stock"]').forEach(field => { const key=trackedFieldKey(field); if (!(key in fields)) return; if (field.type === 'checkbox' || field.type === 'radio') field.checked=Boolean(fields[key]) && (field.type !== 'radio' || field.value === fields[key] || fields[key] === true); else field.value=fields[key]; }); }
+function saveTrackedField(field) { const key=trackedFieldKey(field); if (!key || (field.dataset.personalityAnswer !== undefined && !field.checked)) return; const state=lessonLearningState(activeLesson); state.fields[key] = field.dataset.personalityAnswer !== undefined ? field.value : field.type === 'checkbox' || field.type === 'radio' ? field.checked : field.value; markLearningProgress(`input:${activeLesson}:${key}`); saveLearningState(); updateLearningProgress(); }
+function restoreTrackedFields(id) { const fields=lessonLearningState(id).fields; document.querySelectorAll('[data-personality-answer],[data-finance],[data-technical-note],[data-practice-note],[data-sim-condition],[data-sim-condition-range],[data-quant-field],input[name="practice-stock"]').forEach(field => { const key=trackedFieldKey(field); if (!(key in fields)) return; if (field.type === 'checkbox' || field.type === 'radio') field.checked=Boolean(fields[key]) && (field.type !== 'radio' || field.value === fields[key] || fields[key] === true); else field.value=fields[key]; }); }
 function learningProgress(id=activeLesson) {
   const state=lessonLearningState(id), fields=state.fields, panel=document.getElementById('analysis-panels');
   if (!panel) return { completed:0, total:1, percent:0 };
-  const elements=[...panel.querySelectorAll('[data-finance],[data-technical-note],[data-practice-note],[data-sim-condition],[data-sim-condition-range],[data-quant-field],input[name="practice-stock"]')];
+  const elements=[...panel.querySelectorAll('[data-personality-answer],[data-finance],[data-technical-note],[data-practice-note],[data-sim-condition],[data-sim-condition-range],[data-quant-field],input[name="practice-stock"]')];
   const keys=[...new Set(elements.map(trackedFieldKey).filter(Boolean))];
   const completed=keys.filter(key => { const value=fields[key]; return typeof value === 'boolean' ? value : String(value ?? '').trim() !== ''; }).length + Object.keys(state.actions).filter(key => key.startsWith('run:') || key === 'sector-select').length;
-  const total=keys.length + (panel.querySelector('[data-sim-run],[data-finance-run],[data-practice-review],[data-technical-practice-review],[data-quant-backtest],[data-quant-seasonality],[data-pine-check]') ? 1 : 0) + (id === 'fundamental-practice' ? 1 : 0);
+  const total=keys.length + (panel.querySelector('[data-sim-run],[data-finance-run],[data-practice-review],[data-technical-practice-review],[data-quant-backtest],[data-quant-seasonality],[data-pine-check],[data-personality-run]') ? 1 : 0) + (id === 'fundamental-practice' ? 1 : 0);
   return { completed:Math.min(completed,total), total, percent:Math.min(100, Math.round(completed / Math.max(total,1) * 100)) };
 }
 function globalLearningProgress() { const completed=Object.keys(learningState.completed).length; return { completed, total:globalProgressTarget, percent:Math.min(100, Math.round(completed / globalProgressTarget * 100)) }; }
@@ -579,7 +581,32 @@ async function renderQuantDatabase() {
   document.querySelector('[data-quant-db-run]').addEventListener('click', runDatabaseBacktest);
   try { const response=await fetch('/api/quant/overview'); const data=await response.json(); if (response.ok) document.querySelector('[data-quant-db-result]').innerHTML=`<p class="quant-db-overview">연결됨 · OHLCV <b>${Number(data.market_rows).toLocaleString()}</b>건 · 전략 <b>${data.strategy_count}</b>개 · 거래 로그 <b>${data.trade_count}</b>건 · ${quantEscape((data.symbols || []).join(', '))}</p>`; } catch (_) {}
 }
+const personalityQuestions = [
+  { title:'투자 목표 기간은 어느 정도인가요?', options:[['1','1년 이내'],['2','1~3년'],['3','3~7년'],['4','7년 이상']] },
+  { title:'투자금이 한 달 동안 20% 하락하면 어떻게 하겠어요?', options:[['1','대부분 매도하고 현금을 확보한다'],['2','일부 매도하고 상황을 지켜본다'],['3','계획을 다시 확인하고 유지한다'],['4','추가 매수를 검토한다']] },
+  { title:'투자에서 가장 중요하게 생각하는 것은 무엇인가요?', options:[['1','원금 보전'],['2','꾸준한 수익과 안정성'],['3','시장 평균 이상의 성장'],['4','높은 수익을 위한 기회 포착']] },
+  { title:'주가 변동이 큰 성장주를 어떻게 바라보나요?', options:[['1','가능하면 피하고 싶다'],['2','포트폴리오 일부만 담는다'],['3','사업을 이해하면 투자할 수 있다'],['4','변동성이 큰 종목을 적극적으로 찾는다']] },
+  { title:'투자 판단을 위해 얼마나 자주 포트폴리오를 점검하나요?', options:[['1','매우 드물게, 장기 보유한다'],['2','월 1회 정도 확인한다'],['3','주 1회 정도 확인한다'],['4','시장 상황에 따라 매일 대응한다']] },
+  { title:'원금 대비 어느 정도 손실까지 감내할 수 있나요?', options:[['1','5% 이내'],['2','10% 이내'],['3','20% 이내'],['4','30% 이상도 감내 가능']] }
+];
+function renderPersonalityTest() {
+  document.getElementById('analysis-breadcrumb').innerHTML = '<span>투자자 진단</span><i class="fa-solid fa-chevron-right"></i><strong>주식성향 테스트</strong>';
+  document.getElementById('analysis-hero').innerHTML = '<div class="academy-hero-content"><span class="academy-hero-tag"><i class="fa-solid fa-user-check"></i> INVESTOR CHECK</span><h2>나의 주식 투자 성향은?</h2><p>투자 기간, 손실 감내 수준, 의사결정 습관을 바탕으로 학습용 성향을 확인합니다.</p></div>';
+  const questions = personalityQuestions.map((question, index) => `<fieldset class="personality-question"><legend><span>${String(index + 1).padStart(2, '0')}</span>${question.title}</legend><div class="personality-options">${question.options.map(([value, label]) => `<label><input type="radio" name="personality-${index}" value="${value}" data-personality-answer="${index}"><span>${label}</span></label>`).join('')}</div></fieldset>`).join('');
+  document.getElementById('analysis-panels').innerHTML = `<article class="academy-panel full personality-panel"><div class="academy-panel-head"><span class="academy-panel-num">01</span><h3>6문항 투자 성향 진단</h3></div><div class="academy-panel-body"><p class="academy-summary">정답은 없습니다. 현재의 투자 목적과 감정적인 반응을 기준으로 가장 가까운 답을 선택하세요.</p><form class="personality-form">${questions}<button class="sim-action" type="button" data-personality-run><i class="fa-solid fa-chart-pie"></i> 결과 확인</button></form><div class="personality-output" data-personality-output><strong>모든 문항에 답해보세요.</strong> 응답을 바탕으로 투자 성향을 보여드립니다.</div></div></article>`;
+  restoreTrackedFields('stock-personality');
+  updateLearningProgress();
+  document.querySelector('[data-personality-run]').addEventListener('click', () => {
+    const answers = personalityQuestions.map((_, index) => document.querySelector(`input[name="personality-${index}"]:checked`));
+    const output = document.querySelector('[data-personality-output]');
+    if (answers.some(answer => !answer)) { output.innerHTML = '<strong>모든 문항에 답해주세요.</strong><br>현재의 투자 목적과 손실에 대한 반응을 기준으로 선택하면 됩니다.'; return; }
+    const score = answers.reduce((total, answer) => total + Number(answer.value), 0);
+    const profiles = score <= 9 ? { name:'안정 추구형', tone:'주의', range:'6~9점', description:'원금 보전과 예측 가능한 흐름을 우선하는 성향입니다.', guide:'분산 투자, 현금성 자산, 손실 한도를 먼저 정하고 투자 기간을 길게 가져가는 학습이 잘 맞습니다.', bars:[['안정성 선호',92],['변동성 감내',32],['장기 투자 성향',65]] } : score <= 14 ? { name:'균형형', tone:'중립', range:'10~14점', description:'안정성과 성장 가능성을 함께 고려하는 성향입니다.', guide:'핵심 자산과 성장 자산을 나누고, 정기 리밸런싱 기준을 세우는 학습이 잘 맞습니다.', bars:[['안정성 선호',72],['변동성 감내',55],['장기 투자 성향',76]] } : score <= 19 ? { name:'성장 추구형', tone:'긍정', range:'15~19점', description:'장기 성장 가능성을 위해 일정 수준의 변동성을 감수하는 성향입니다.', guide:'기업의 재무 품질과 밸류에이션을 확인한 뒤 종목별 비중과 손실 기준을 관리해보세요.', bars:[['안정성 선호',48],['변동성 감내',74],['장기 투자 성향',82]] } : { name:'적극 투자형', tone:'긍정', range:'20~24점', description:'높은 성장 기회를 위해 큰 가격 변동도 감수하는 성향입니다.', guide:'수익률보다 포지션 크기, 최대 손실, 매도 규칙을 먼저 정하고 기록으로 검증하세요.', bars:[['안정성 선호',28],['변동성 감내',91],['장기 투자 성향',70]] };
+    output.innerHTML = `${signalLight(profiles.tone, profiles.name, `${score}점 · ${profiles.range}`)}<p class="personality-description"><strong>${profiles.name}</strong> · ${profiles.description}</p>${bars({bars:profiles.bars})}<p class="result-note"><strong>학습 가이드:</strong> ${profiles.guide} 성향은 시장 상황과 생애주기에 따라 달라질 수 있으므로 정기적으로 다시 점검하세요.</p>`;
+  });
+}
 function renderLesson() {
+  if (activeLesson === 'stock-personality') { renderPersonalityTest(); return; }
   if (activeLesson === 'quant-day5') { renderQuantDay5(); return; }
   if (activeLesson === 'json-consistency') { renderJsonConsistencyChecker(); return; }
   const item = lessonMap[activeLesson];
@@ -682,8 +709,8 @@ function recordLearningClick(event) {
   const clickKey=`click:${target.tagName.toLowerCase()}:${target.dataset.lesson ?? target.dataset.metricIndex ?? target.dataset.marketCheckIndex ?? target.dataset.strategyConceptIndex ?? target.dataset.financialTermIndex ?? target.dataset.valuationTermIndex ?? target.dataset.technicalTermIndex ?? target.dataset.sectorSelect ?? target.getAttribute('href') ?? text}`;
   learningState.clicks.push({ lesson:activeLesson, target:target.tagName.toLowerCase(), text, at:new Date().toISOString() });
   markLearningProgress(clickKey);
-  const run=target.closest('[data-sim-run],[data-finance-run],[data-practice-review],[data-technical-practice-review],[data-quant-backtest],[data-quant-seasonality],[data-pine-check]');
-  if (run) { const action=`run:${run.dataset.simRun !== undefined ? 'simulation' : run.dataset.financeRun !== undefined ? 'finance' : run.dataset.practiceReview !== undefined ? 'company-practice' : run.dataset.technicalPracticeReview !== undefined ? 'technical-practice' : run.dataset.quantBacktest !== undefined ? 'quant-backtest' : run.dataset.quantSeasonality !== undefined ? 'seasonality' : 'pine-check'}`; state.actions[action]=true; markLearningProgress(`action:${activeLesson}:${action}`); }
+  const run=target.closest('[data-sim-run],[data-finance-run],[data-practice-review],[data-technical-practice-review],[data-quant-backtest],[data-quant-seasonality],[data-pine-check],[data-personality-run]');
+  if (run) { const action=`run:${run.dataset.simRun !== undefined ? 'simulation' : run.dataset.financeRun !== undefined ? 'finance' : run.dataset.practiceReview !== undefined ? 'company-practice' : run.dataset.technicalPracticeReview !== undefined ? 'technical-practice' : run.dataset.quantBacktest !== undefined ? 'quant-backtest' : run.dataset.quantSeasonality !== undefined ? 'seasonality' : run.dataset.personalityRun !== undefined ? 'personality-test' : 'pine-check'}`; state.actions[action]=true; markLearningProgress(`action:${activeLesson}:${action}`); }
   const sector=target.closest('[data-sector-select]');
   if (sector) { state.fields.sector=sector.dataset.sectorSelect; state.actions['sector-select']=true; markLearningProgress(`action:${activeLesson}:sector-select`); }
   saveLearningState(); updateLearningProgress();

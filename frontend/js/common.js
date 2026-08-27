@@ -108,8 +108,15 @@ function renderHeader(user) {
     <a href="/analysis.html" class="oc-nav-item">
       <i class="fa-solid fa-graduation-cap" aria-hidden="true" style="width:16px;text-align:center;"></i> 투자 분석 학습
     </a>`;
+  const personalityNavItem = `
+    <a href="/analysis.html?lesson=stock-personality" class="oc-nav-item">
+      <i class="fa-solid fa-user-check" aria-hidden="true" style="width:16px;text-align:center;"></i> 투자성향 테스트
+    </a>`;
 
   const ocNavGuest = `
+    <a href="/index.html" class="oc-nav-item">
+      <i class="fa-solid fa-gauge-high" aria-hidden="true" style="width:16px;text-align:center;"></i> 대시보드
+    </a>
     <div class="oc-group open">
       <button type="button" class="oc-group-toggle" onclick="toggleOcGroup(0)" aria-expanded="true">
         <span>실전연습</span>
@@ -139,7 +146,7 @@ function renderHeader(user) {
         <button class="oc-close-btn" onclick="closeOffcanvas()">✕</button>
       </div>
       <nav class="oc-nav">
-        ${isLoggedIn ? ocNavAuthed : ocNavGuest}
+        ${isLoggedIn ? `${ocNavAuthed}${personalityNavItem}` : `${ocNavGuest}${personalityNavItem}`}
       </nav>
       <div class="oc-footer" style="font-size:11px;color:var(--muted);">
         <div>(주)에듀엠지티</div>
